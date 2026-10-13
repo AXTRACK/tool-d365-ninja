@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "axtrack-local-metadata-v2",
+  "baseRevision": "ba598cc346864b41c6426b58a620e082ecc34b27",
+  "applyScript": "Apply.ps1",
+  "description": "Adds governed structural writes plus validated Phase 6 read-only method/source search for the local metadata successor runtime."
+}
