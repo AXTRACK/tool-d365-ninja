@@ -1062,22 +1062,124 @@ public sealed partial class ToolHandlers
     private static string Aot(System.Xml.Linq.XDocument doc)
         => D365FO.Core.Scaffolding.ScaffoldFileWriter.ToAotXml(doc);
 
-    public ToolResult<object> GenerateEdt(string name, string? extends, string? label, int size)
+    /// <summary>
+    /// EDT and enum generation shares the existing CLI's bridge create path when installTo
+    /// is provided. Without an output destination it remains XML-only for compatibility.
+    /// A failed metadata-provider read-back is never reported as physical completion.
+    /// </summary>
+    private ToolResult<object> EmitSmallAotObject(
+        System.Xml.Linq.XDocument doc, string name, string kind, string folder,
+        string? installTo, string? outPath, bool overwrite, string? groundingToken,
+        IEnumerable<string>? requiredSymbols = null)
     {
-        if (string.IsNullOrWhiteSpace(name))
-            return ToolResult<object>.Fail("BAD_INPUT", "name is required.");
-        var doc = D365FO.Core.Scaffolding.XppScaffolder.Edt(name, extends, null, size > 0 ? size : null, label);
-        return ToolResult<object>.Success(new { name, xml = Aot(doc) });
+        if (string.IsNullOrWhiteSpace(installTo) && string.IsNullOrWhiteSpace(outPath))
+            return ToolResult<object>.Success(new { name, xml = Aot(doc) });
+        if (!string.IsNullOrWhiteSpace(installTo) && !string.IsNullOrWhiteSpace(outPath))
+            return ToolResult<object>.Fail("BAD_INPUT", "Specify installTo or out, not both.");
+
+        if (string.IsNullOrWhiteSpace(installTo))
+            return WriteScaffold(doc, name, "Ax" + kind, folder, null, outPath,
+                overwrite, new { }, groundingToken, requiredSymbols: requiredSymbols);
+
+        if (overwrite)
+            return ToolResult<object>.Fail("BAD_INPUT",
+                "overwrite is not supported for bridge creation. Modify an existing AOT object explicitly.");
+
+        var gate = D365FO.Core.Scaffolding.GroundingGate.Check(
+            groundingToken, name, doc, requiredSymbols: requiredSymbols, repository: _repo);
+        if (gate.Failure is not null) return gate.Failure;
+
+        // The bridge creates through IMetadataProvider. No raw-XML disk fallback: an
+        // inaccessible provider is not evidence that a physical AOT change occurred.
+        var (created, error) = D365FO.Core.Bridge.BridgeGate.TrySaveObject(
+            kind.ToLowerInvariant(), name, installTo!, Aot(doc));
+        if (!created)
+            return ToolResult<object>.Fail("INSTALL_FAILED",
+                $"Metadata provider did not create '{name}' in '{installTo}': {error}");
+
+        gate.Observe(doc.ToString());
+        // Preserve the existing Ninja undo journal, distinct from the WorkItem lifecycle.
+        try
+        {
+            D365FO.Core.Journal.ModificationJournal.ForIndex().Append(
+                new D365FO.Core.Journal.JournalEntry(
+                    Id: Guid.NewGuid().ToString("N"),
+                    TimestampUtc: DateTimeOffset.UtcNow,
+                    Command: $"generate {kind.ToLowerInvariant()} --install-to",
+                    TargetType: D365FO.Core.Journal.JournalTargetType.AotObject,
+                    Kind: kind.ToLowerInvariant(),
+                    ObjectName: name,
+                    SecondaryKey: null,
+                    Model: installTo,
+                    Operation: D365FO.Core.Journal.JournalOperation.Create,
+                    WritePath: D365FO.Core.Journal.JournalWritePath.Bridge,
+                    TargetPath: null,
+                    PreImage: null,
+                    IsTombstone: true,
+                    RnrProjDelta: null));
+        }
+        catch (Exception ex)
+        {
+            return ToolResult<object>.Fail("JOURNAL_FAILED",
+                $"Created '{name}' but the Ninja undo journal failed: {ex.Message}. Reconcile the existing object before retrying.");
+        }
+
+        var (readBack, detail) = D365FO.Core.Bridge.BridgeGate.TryVerifyObject(
+            kind.ToLowerInvariant(), name);
+        if (readBack != D365FO.Core.Bridge.BridgeGate.VerifyOutcome.Readable)
+            return ToolResult<object>.Fail("VERIFY_FAILED",
+                $"Created '{name}' but the metadata-provider read-back was not verified: {detail}. Reconcile before retrying.");
+
+        return ToolResult<object>.Success(new
+        {
+            kind = "Ax" + kind,
+            name,
+            model = installTo,
+            source = "bridge",
+            verify = new { status = "verified" },
+            grounding = gate.Grounding,
+        }, gate.Warnings.Count > 0 ? gate.Warnings : null);
     }
 
-    public ToolResult<object> GenerateEnum(string name, string? label, string[]? values)
+    public ToolResult<object> GenerateEdt(
+        string name, string? extends, string? label, int size,
+        string? baseType = null, string? enumType = null,
+        string? installTo = null, string? outPath = null,
+        bool overwrite = false, string? groundingToken = null)
     {
         if (string.IsNullOrWhiteSpace(name))
             return ToolResult<object>.Fail("BAD_INPUT", "name is required.");
-        var vals = values?.Select((v, i) => new D365FO.Core.Scaffolding.EnumValueSpec(v, i, null)).ToList()
-                   ?? new List<D365FO.Core.Scaffolding.EnumValueSpec>();
-        var doc = D365FO.Core.Scaffolding.XppScaffolder.Enum(name, vals, label: label);
-        return ToolResult<object>.Success(new { name, xml = Aot(doc) });
+        var doc = D365FO.Core.Scaffolding.XppScaffolder.Edt(
+            name, extends, baseType, size > 0 ? size : null, label, enumType);
+        return EmitSmallAotObject(doc, name, "Edt", "AxEdt",
+            installTo, outPath, overwrite, groundingToken,
+            new[] { extends, enumType }.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!));
+    }
+
+    public ToolResult<object> GenerateEnum(
+        string name, string? label, string[]? values,
+        string? installTo = null, string? outPath = null,
+        bool overwrite = false, string? groundingToken = null, bool nonExtensible = false)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return ToolResult<object>.Fail("BAD_INPUT", "name is required.");
+        var vals = new List<D365FO.Core.Scaffolding.EnumValueSpec>();
+        foreach (var raw in values ?? [])
+        {
+            var parts = raw.Split(':', 3, StringSplitOptions.TrimEntries);
+            if (string.IsNullOrWhiteSpace(parts[0]))
+                return ToolResult<object>.Fail("BAD_INPUT", "Enum values must have non-empty names.");
+            if (parts.Length > 1 && !int.TryParse(parts[1], out _))
+                return ToolResult<object>.Fail("BAD_INPUT",
+                    $"Enum value '{raw}' must use Name:IntValue[:Label].");
+            var ordinal = parts.Length > 1 ? int.Parse(parts[1]) : vals.Count;
+            vals.Add(new D365FO.Core.Scaffolding.EnumValueSpec(
+                parts[0], ordinal, parts.Length > 2 ? parts[2] : null));
+        }
+        var doc = D365FO.Core.Scaffolding.XppScaffolder.Enum(
+            name, vals, !nonExtensible, label);
+        return EmitSmallAotObject(doc, name, "Enum", "AxEnum",
+            installTo, outPath, overwrite, groundingToken);
     }
 
     public ToolResult<object> GenerateQuery(string name, string rootTable, string? label)
