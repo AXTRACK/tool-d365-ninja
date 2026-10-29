@@ -428,14 +428,14 @@ public static class ToolCatalog
             + "validator, findings come back in `grounding`, and under D365FO_GROUNDING_ENFORCE=true a write "
             + "needs a valid `groundingToken` (from `prepare`, bound to this object) and is refused when an "
             + "identifier cannot be proved. Two families share this one tool:\n" +
-            "• WRITE to disk (requires `installTo` model name — resolves the path from the configured packages " +
+            "• WRITE to disk (requires `installTo` model name or `out` explicit path): " +
             "paths — or `out` explicit path): table (pattern-aware, `fields` \"<name>:<edt>[:mandatory]\", " +
             "`pattern` main|transaction|parameter|group|reference|miscellaneous) · class (`extends`, `nonFinal`) · " +
             "coc (`target` + `methods`, writes <target>_Extension) · form (`table`, `pattern` SimpleList|" +
             "SimpleListDetails|DetailsMaster|DetailsTransaction|Dialog|TableOfContents|Lookup|ListPage|Workspace, " +
-            "`caption`, `fields`, `linesTable`).\n" +
-            "• XML-only, no file written (cloud/Linux friendly): edt (`extends`, `label`, `size`) · enum (`label`, " +
-            "`values`) · query (`rootTable`, `label`) · sysoperation (`executionMode`; Contract+Service+Controller) · " +
+            "`caption`, `fields`, `linesTable`) · edt (`baseType`, `extends`, `enumType`, `size`, `label`) · " +
+            "enum (`values` as Name:IntValue[:Label], `nonExtensible`, `label`).\n" +
+            "• XML-only, no file written (cloud/Linux friendly): query (`rootTable`, `label`) · sysoperation (`executionMode`; Contract+Service+Controller) · " +
             "business-event (`contractName`, `category`) · runbase (`batch`) · security-policy (`constrainedTable`, " +
             "`policyQuery`) · menu-item (`objectName`, `menuKind` Display|Action|Output, `objectTypeTarget` " +
             "Form|Class|Report|Query, `neededPermission`) · privilege (`entryPoint` + `entryKind`, or `dataEntity`; " +
@@ -481,6 +481,8 @@ public static class ToolCatalog
                    ("target", "string", false), ("methods", "array", false),
                    ("table", "string", false), ("caption", "string", false), ("linesTable", "string", false),
                    ("size", "integer", false), ("values", "array", false),
+                   ("baseType", "string", false), ("enumType", "string", false),
+                   ("nonExtensible", "boolean", false),
                    ("rootTable", "string", false), ("executionMode", "string", false),
                    ("contractName", "string", false), ("category", "string", false), ("batch", "boolean", false),
                    ("constrainedTable", "string", false), ("policyQuery", "string", false),
@@ -540,9 +542,13 @@ public static class ToolCatalog
                 "table" => h.GenerateTable(Str(p, "name"), StrOrNull(p, "label"), StrArray(p, "fields"),
                             StrOrNull(p, "pattern"), StrOrNull(p, "installTo"), StrOrNull(p, "out"), Bool(p, "overwrite"),
                             StrOrNull(p, "groundingToken")),
-                // XML-only objectTypes.
-                "edt"             => h.GenerateEdt(Str(p, "name"), StrOrNull(p, "extends"), StrOrNull(p, "label"), Int(p, "size", 0)),
-                "enum"            => h.GenerateEnum(Str(p, "name"), StrOrNull(p, "label"), StrArray(p, "values")),
+                // Small objects: XML-only by default, bridge-backed installTo, or scaffold out.
+                "edt"             => h.GenerateEdt(Str(p, "name"), StrOrNull(p, "extends"), StrOrNull(p, "label"), Int(p, "size", 0),
+                    StrOrNull(p, "baseType"), StrOrNull(p, "enumType"), StrOrNull(p, "installTo"),
+                    StrOrNull(p, "out"), Bool(p, "overwrite"), StrOrNull(p, "groundingToken")),
+                "enum"            => h.GenerateEnum(Str(p, "name"), StrOrNull(p, "label"), StrArray(p, "values"),
+                    StrOrNull(p, "installTo"), StrOrNull(p, "out"), Bool(p, "overwrite"),
+                    StrOrNull(p, "groundingToken"), Bool(p, "nonExtensible")),
                 "query"           => h.GenerateQuery(Str(p, "name"), Str(p, "rootTable"), StrOrNull(p, "label")),
                 "sysoperation"    => h.GenerateSysOperation(Str(p, "name"), StrOr(p, "executionMode", "Synchronous")),
                 "business-event"  => h.GenerateBusinessEvent(Str(p, "name"), StrOrNull(p, "contractName"), StrOr(p, "category", "Custom")),
