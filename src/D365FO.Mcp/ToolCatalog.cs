@@ -42,6 +42,7 @@ public static class ToolCatalog
         // provider) just like the write it reverts — flagged write even though its
         // `dryRun` mode is read-only, since clients gate on the tool, not the call.
         "generate_object", "labels", "modify_method", "modify_object", "undo_last_modification",
+        "workitem_implement",
     };
 
     /// <summary>
@@ -68,6 +69,23 @@ public static class ToolCatalog
 
     public static IReadOnlyList<Descriptor> All { get; } = new[]
     {
+        // Canonical AXTRACK/Codex Implement journal adapter (no parallel state store).
+        // The script and roots are pinned by MCP operator configuration, never by a client.
+        new Descriptor("workitem_implement",
+            "Operate the existing AXTRACK/Codex WorkItem Implement journal on the configured local UDE. " +
+            "Actions: status | register-plan | begin | record-target | skip-target | record-validation | " +
+            "recover-complete | complete. Requires an operator-pinned lifecycle_state.py and roots. " +
+            "This tool does NOT physically create AOT objects, grant stage authorization, or certify completion " +
+            "unless the canonical lifecycle helper verifies the transition.",
+            Schema(("action", "string", true), ("planFile", "string", false),
+                   ("path", "string", false), ("targetId", "string", false),
+                   ("receiptPath", "string", false), ("receiptSha256", "string", false),
+                   ("reconciledSha256", "string", false), ("reconciliationEvidence", "string", false),
+                   ("validationId", "string", false), ("validationStatus", "string", false),
+                   ("reason", "string", false), ("evidence", "string", false),
+                   ("deleted", "boolean", false)),
+            (h, p) => WorkItemImplementTool.Run(p)),
+
         // ──────────────────────────────────────────────────────────────────
         // Unified tool surface. Each tool dispatches to the underlying
         // ToolHandlers methods via a discriminator (type / objectType / mode /
