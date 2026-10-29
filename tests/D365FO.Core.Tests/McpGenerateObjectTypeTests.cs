@@ -307,4 +307,45 @@ public class McpGenerateObjectTypeTests : IDisposable
         var bad = Generate("""{"objectType":"label-file","name":"Con Fleet","model":"Contoso"}""");
         Assert.False(bad.GetProperty("ok").GetBoolean());
     }
+    [Theory]
+    [InlineData("enum", "AxEnum", """{"objectType":"enum","name":"ConCaseRequestStatus","values":["Created:0","Completed:10"]}""")]
+    [InlineData("edt", "AxEdt", """{"objectType":"edt","name":"ConCaseRequestId","baseType":"String","size":20}""")]
+    public void Enum_and_edt_can_write_explicit_scaffold_outputs(string objectType, string expectedRoot, string request)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "d365fo-mcp-small-write-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var file = Path.Combine(directory, objectType + ".xml");
+        try
+        {
+            using var parsed = JsonDocument.Parse(request);
+            var payload = System.Text.Json.Nodes.JsonNode.Parse(request)!.AsObject();
+            payload["out"] = file;
+            var result = Generate(payload.ToJsonString());
+            AssertOk(result);
+            Assert.True(File.Exists(file));
+            var written = XDocument.Load(file);
+            Assert.Equal(expectedRoot, written.Root!.Name.LocalName);
+            Assert.Equal(file, result.GetProperty("data").GetProperty("path").GetString());
+            if (objectType == "enum")
+                Assert.Contains("Completed", File.ReadAllText(file));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("edt")]
+    [InlineData("enum")]
+    public void Xml_only_small_object_generation_remains_available(string objectType)
+    {
+        var result = Generate(objectType == "edt"
+            ? """{"objectType":"edt","name":"ConRequestId"}"""
+            : """{"objectType":"enum","name":"ConRequestStatus","values":["Created","Completed"]}""");
+        AssertOk(result);
+        Assert.False(result.GetProperty("data").TryGetProperty("path", out _));
+        AssertAotDocument(result.GetProperty("data").GetProperty("xml").GetString()!);
+    }
+
 }

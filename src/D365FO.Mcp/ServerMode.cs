@@ -76,6 +76,8 @@ public static class ServerModeConfig
         // `index_sync` reads model XML off the local package tree. A shared instance has none,
         // and its index is fed by whoever deployed it rather than by a caller.
         "index_sync",
+        // Canonical local WorkItem journal requires an operator-pinned project checkout.
+        "workitem_implement",
     };
 
     /// <summary>

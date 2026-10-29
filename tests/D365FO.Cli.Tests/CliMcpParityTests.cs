@@ -77,7 +77,9 @@ public class CliMcpParityTests
     /// </summary>
     private static readonly IReadOnlyDictionary<string, string> McpOnly = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        // (empty — every tool is reachable from a command)
+        // The canonical WorkItem lifecycle is a separate AXTRACK/Codex Python CLI; 
+        // exposing it through Ninja MCP does not add a second d365fo CLI route.
+        ["workitem_implement"] = "Delegates to the existing lifecycle_state.py CLI; not a Ninja Core command.",
     };
 
     /// <summary>
