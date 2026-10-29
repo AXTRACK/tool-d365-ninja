@@ -27,22 +27,26 @@ public static class WorkItemImplementTool
         // Operator-owned configuration only; MCP clients cannot select an arbitrary
         // script, Python executable, project root or WorkItem root.
         var script = Environment.GetEnvironmentVariable("D365FO_IMPLEMENT_LIFECYCLE_SCRIPT");
-        var workitemRoot = Environment.GetEnvironmentVariable("D365FO_IMPLEMENT_WORKITEM_ROOT");
+        var workItemsRoot = Environment.GetEnvironmentVariable("D365FO_IMPLEMENT_WORKITEMS_ROOT");
         var projectRoot = Environment.GetEnvironmentVariable("D365FO_IMPLEMENT_PROJECT_ROOT");
         var python = Environment.GetEnvironmentVariable("D365FO_IMPLEMENT_PYTHON") ?? "python";
 
         if (string.IsNullOrWhiteSpace(script) || !Path.IsPathFullyQualified(script) ||
             !File.Exists(script) || !Path.GetFileName(script).Equals("lifecycle_state.py", StringComparison.OrdinalIgnoreCase) ||
-            string.IsNullOrWhiteSpace(workitemRoot) || !Path.IsPathFullyQualified(workitemRoot) ||
-            !Directory.Exists(workitemRoot) ||
+            string.IsNullOrWhiteSpace(workItemsRoot) || !Path.IsPathFullyQualified(workItemsRoot) ||
+            !Directory.Exists(workItemsRoot) ||
             string.IsNullOrWhiteSpace(projectRoot) || !Path.IsPathFullyQualified(projectRoot) ||
             !Directory.Exists(projectRoot))
             return ToolResult<object>.Fail("LIFECYCLE_NOT_CONFIGURED",
-                "WorkItem Implement adapter requires operator-pinned lifecycle_state.py, WorkItem root and project root.",
-                "Set D365FO_IMPLEMENT_LIFECYCLE_SCRIPT, D365FO_IMPLEMENT_WORKITEM_ROOT and D365FO_IMPLEMENT_PROJECT_ROOT on the local Ninja MCP process.");
+                "WorkItem Implement adapter requires operator-pinned lifecycle_state.py, WorkItems index root and project source root.",
+                "Set D365FO_IMPLEMENT_LIFECYCLE_SCRIPT, D365FO_IMPLEMENT_WORKITEMS_ROOT and D365FO_IMPLEMENT_PROJECT_ROOT on the local Ninja MCP process.");
 
         List<string> arguments;
-        try { arguments = BuildArguments(request, script, workitemRoot, projectRoot); }
+        try
+        {
+            var workitemRoot = ResolveWorkItemRoot(workItemsRoot!, Text(request, "ticketId"));
+            arguments = BuildArguments(request, script!, workitemRoot, projectRoot!);
+        }
         catch (ArgumentException ex) { return ToolResult<object>.Fail("BAD_INPUT", ex.Message); }
 
         try
@@ -87,6 +91,35 @@ public static class WorkItemImplementTool
         {
             return ToolResult<object>.Fail("LIFECYCLE_EXEC_FAILED", ex.Message);
         }
+    }
+
+    /// <summary>Use the project-owned WorkItems index, never a client-selected path.</summary>
+    public static string ResolveWorkItemRoot(string workItemsRoot, string ticketId)
+    {
+        if (string.IsNullOrWhiteSpace(ticketId) || !ticketId.All(char.IsAsciiDigit))
+            throw new ArgumentException("ticketId must be a non-empty numeric WorkItem ID.");
+        var index = Path.Combine(workItemsRoot, "index.json");
+        if (!File.Exists(index))
+            throw new ArgumentException("The configured WorkItems root does not contain index.json.");
+        using var doc = JsonDocument.Parse(File.ReadAllText(index));
+        if (doc.RootElement.ValueKind != JsonValueKind.Object ||
+            !doc.RootElement.TryGetProperty(ticketId, out var entry) ||
+            entry.ValueKind != JsonValueKind.String)
+            throw new ArgumentException($"WorkItem '{ticketId}' is not registered in the project index.");
+
+        var folder = entry.GetString() ?? "";
+        if (string.IsNullOrWhiteSpace(folder) ||
+            !folder.StartsWith(ticketId + " - ", StringComparison.Ordinal) ||
+            folder.IndexOfAny(new[] { '/', '\\', ':', '\0' }) >= 0 ||
+            folder is "." or "..")
+            throw new ArgumentException("WorkItem index contains an unsafe folder name.");
+        var root = Path.GetFullPath(workItemsRoot);
+        if (new DirectoryInfo(root).LinkTarget is not null)
+            throw new ArgumentException("Configured WorkItems root must not be a symbolic link.");
+        var candidate = Path.Combine(root, folder);
+        if (!Directory.Exists(candidate) || new DirectoryInfo(candidate).LinkTarget is not null)
+            throw new ArgumentException("Indexed WorkItem directory is missing or linked.");
+        return candidate;
     }
 
     /// <summary>Build only supported canonical CLI commands. No shell invocation or free-form argv.</summary>
