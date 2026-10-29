@@ -77,7 +77,7 @@ public static class ToolCatalog
             "recover-complete | complete. Requires an operator-pinned lifecycle_state.py and roots. " +
             "This tool does NOT physically create AOT objects, grant stage authorization, or certify completion " +
             "unless the canonical lifecycle helper verifies the transition.",
-            Schema(("action", "string", true), ("planFile", "string", false),
+            Schema(("action", "string", true), ("ticketId", "string", true), ("planFile", "string", false),
                    ("path", "string", false), ("targetId", "string", false),
                    ("receiptPath", "string", false), ("receiptSha256", "string", false),
                    ("reconciledSha256", "string", false), ("reconciliationEvidence", "string", false),
