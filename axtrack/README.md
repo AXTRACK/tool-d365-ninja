@@ -14,8 +14,21 @@ Do not publish a release or switch production consumers based solely on this sou
 
 ## Active AXTRACK MCP architecture
 
-The current AXTRACK development MCP is Ninja `D365FO.Mcp`, alongside `D365FO.Cli`, using shared `D365FO.Core` and the workstation `D365FO.Bridge` for authoritative metadata operations. The intended MCP mode is `MCP_SERVER_MODE=full`, not `read-only`. A running instance's effective mode and write access must still be checked on that instance before claiming runtime verification.
+The current AXTRACK development MCP is Ninja `D365FO.Mcp`, alongside `D365FO.Cli`, using shared `D365FO.Core` and the workstation `D365FO.Bridge` for authoritative metadata operations. The active Ninja deployment is configured for `MCP_SERVER_MODE=full`. Verify the effective process configuration and installed binary independently after each deployment.
 
 AXTRACK-specific changes are owned as a revision-pinned overlay (`axtrack/overlay.json`, `axtrack/Apply.ps1`); the approved upstream revision, overlay identity, installation target, and capabilities are recorded in `AXTRACK/Codex/Tools/ninja-cli.json`. The repository's source checkout alone does not prove that a new binary has been installed or activated.
 
 The predecessor `AXTRACK/d365-metadata-service` is historical migration material, **not** an active MCP server, an active deployment target, or the source of current mode settings. Its archived NAS/read-only configuration must not be used to describe the current Ninja MCP.
+
+## MCP AOT creation, current release candidate
+
+The MCP `generate_object` tool supports `objectType=enum` and `objectType=edt` through the same Ninja scaffolders as CLI:
+
+- No destination: XML-only response, unchanged behavior.
+- `out`: guarded atomic scaffold file write, **not** proof of AOT installation.
+- `installTo`: bridge-backed `createObject` using `D365FO.Bridge` and `IMetadataProvider`; record a Ninja undo-journal entry, require live metadata provider read-back, fail closed without the bridge, and reject `overwrite` for create.
+- Enum: `values` accepts `Name:IntValue[:Label]` or legacy bare names; `nonExtensible` is optional. EDT: `baseType`, `enumType`, `extends`, `size` and `label`.
+
+The Ninja undo journal does **not** replace the WorkItem Implement journal. The sole lifecycle owner is `AXTRACK/Codex/Plugins/d365fo-workitem/skills/d365fo-workitem/scripts/lifecycle_state.py`, with its existing `implement-*` commands. WorkItem target registration, pre-state, final receipt, validation closure and completion still require that canonical journal. Calling Ninja generation does not itself mark WorkItem Implement complete. This change does not execute or authorize `+fo implement 64120`.
+
+Deployment remains a separate step: the source and overlay need to be published, the installed UDE binary and `tools/list` must be verified, and AOT create/read-back requires live UDE evidence. The pinned upstream and installation contract in `AXTRACK/Codex/Tools/ninja-cli.json` are unchanged here.
