@@ -66,4 +66,29 @@ public class WorkItemImplementMcpTests
             WorkItemImplementTool.BuildArguments(input.RootElement, "lifecycle_state.py",
                 Path.Combine(Path.GetTempPath(), "workitem-test"), Path.GetTempPath()));
     }
+    [Fact]
+    public void WorkItem_resolution_uses_only_the_authoritative_project_index()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "wim-index-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "64120 - CR Consolidation"));
+            File.WriteAllText(Path.Combine(root, "index.json"),
+                """{"64120":"64120 - CR Consolidation","64121":"../outside"}""");
+            Assert.Equal(Path.Combine(root, "64120 - CR Consolidation"),
+                WorkItemImplementTool.ResolveWorkItemRoot(root, "64120"));
+            Assert.Throws<ArgumentException>(() =>
+                WorkItemImplementTool.ResolveWorkItemRoot(root, "64121"));
+            Assert.Throws<ArgumentException>(() =>
+                WorkItemImplementTool.ResolveWorkItemRoot(root, "../64120"));
+            Assert.Throws<ArgumentException>(() =>
+                WorkItemImplementTool.ResolveWorkItemRoot(root, "64122"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
 }
