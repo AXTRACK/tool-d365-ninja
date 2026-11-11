@@ -350,6 +350,12 @@ More in [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) and [docs/SETUP.md](d
 
 ---
 
+## CI validation
+
+AXTRACK portable validation runs in the public [build-tests](https://github.com/AXTRACK/build-tests) repository using the `ninja-windows`, `ninja-linux`, and `ninja-macos` profiles. The source repository no longer hosts a duplicate build/test workflow. CodeQL default setup continues to scan C# and Python; GitHub Actions analysis is not applicable because no Actions workflow remains.
+
+---
+
 ## License
 
 MIT. The sibling [`d365fo-mcp-server`](https://github.com/dynamics365ninja/d365fo-mcp-server) is also MIT.
