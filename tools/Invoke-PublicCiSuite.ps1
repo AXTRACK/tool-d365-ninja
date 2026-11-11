@@ -32,5 +32,6 @@ if ($drift.Count -gt 0) { throw "NINJA_CI_GENERATED_SKILLS_DRIFT: $($drift -join
 Invoke-Checked python @('scripts/check-skill-frontmatter.py')
 Invoke-Checked dotnet @('build','src/D365FO.Cli','-c','Release','-nologo')
 Invoke-Checked dotnet @('build','src/D365FO.Mcp','-c','Release','-nologo')
+Invoke-Checked python @('scripts/test-emit-mcp-tools.py')
 Invoke-Checked python @('scripts/emit-mcp-tools.py','--check')
 Write-Host 'NINJA_CI_LINUX_PASS'

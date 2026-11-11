@@ -30,6 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "docs" / "MCP_TOOLS.md"
+MCP_ONLY_TOOLS = {"workitem_implement"}  # Operator-pinned lifecycle journal, no CLI equivalent
 
 INIT = {
     "jsonrpc": "2.0",
@@ -99,7 +100,10 @@ def render(commands: list[dict], tools: list[dict]) -> str:
 
     claimed = set(by_tool)
     missing = sorted(claimed - set(advertised))
-    orphan = sorted(set(advertised) - claimed)
+    orphan = sorted(set(advertised) - claimed - MCP_ONLY_TOOLS)
+    unexpected_cli_routes = sorted(claimed & MCP_ONLY_TOOLS)
+    if unexpected_cli_routes:
+        sys.exit(f"MCP-only tools unexpectedly gained CLI routes: {unexpected_cli_routes}")
     if missing or orphan:
         for name in missing:
             print(f"drift: commands map to '{name}', which the adapter does not advertise", file=sys.stderr)
@@ -133,6 +137,8 @@ def render(commands: list[dict], tools: list[dict]) -> str:
     for name in sorted(advertised):
         tool = advertised[name]
         summary = (tool.get("description") or "").strip().split("\n")[0]
+        if name in MCP_ONLY_TOOLS:
+            summary = "Operator-pinned WorkItem Implement journal (MCP-only; no CLI command)."
         if len(summary) > 240:
             summary = summary[:237].rstrip() + "…"
         out.append(f"### `{name}`\n")
@@ -140,6 +146,8 @@ def render(commands: list[dict], tools: list[dict]) -> str:
             out.append(f"{summary}\n")
         out.append("| CLI command | Discriminator |")
         out.append("|---|---|")
+        if name in MCP_ONLY_TOOLS:
+            out.append("| *(MCP-only operator workflow)* | — |")
         for command, discriminator in sorted(by_tool[name]):
             out.append(f"| `d365fo {command}` | {f'`{discriminator}`' if discriminator else '—'} |")
         out.append("")
